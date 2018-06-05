@@ -12,7 +12,8 @@ Please refer to LICENSE file for licensing information.
 #define WIINUNCHUCK_H_
 
 //definitions
-#define WIINUNCHUCK_ADDR (0x52<<1) //device address
+#define WIINUNCHUCK_ADDR (0x52) //device address
+//#define WIINUNCHUCK_ADDR (0x46<<1)
 #define WIINUNCHUCK_READBYTES 6
 
 //enable a more precise function for centering joypad
@@ -54,7 +55,7 @@ Please refer to LICENSE file for licensing information.
 #endif
 
 //decodebyte is necessary with certain initializations
-#define WIINUNCHUCK_DECODEBYTE 0 //enable or disable the decode byte function
+#define WIINUNCHUCK_DECODEBYTE 1 //enable or disable the decode byte function
 #if WIINUNCHUCK_DECODEBYTE == 1
 #define wiinunchuck_decode(x) (x ^ 0x17) + 0x17;
 #endif

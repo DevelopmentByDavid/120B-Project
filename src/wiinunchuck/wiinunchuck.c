@@ -92,22 +92,22 @@ int wiinunchuck_getjoyY() {
  * get button Z
  */
 uint8_t wiinunchuck_getbuttonZ() {
-	#if WIINUNCHUCK_PULSEBUTTON == 1
-	return (wiinunchuck_buttonZ && !wiinunchuck_lastbuttonZ);
-	#else
+	//#if WIINUNCHUCK_PULSEBUTTON == 1
+	//return (wiinunchuck_buttonZ && !wiinunchuck_lastbuttonZ);
+	//#else
 	return wiinunchuck_buttonZ;
-	#endif
+	//#endif
 }
 
 /*
  * get button C
  */
 uint8_t wiinunchuck_getbuttonC() {
-	#if WIINUNCHUCK_PULSEBUTTON == 1
-	return (wiinunchuck_buttonC && !wiinunchuck_lastbuttonC);
-	#else
+	//#if WIINUNCHUCK_PULSEBUTTON == 1
+	//return (wiinunchuck_buttonC && !wiinunchuck_lastbuttonC);
+	//#else
 	return wiinunchuck_buttonC;
-	#endif
+	//#endif
 }
 
 /*
@@ -231,6 +231,7 @@ void wiinunchuck_update() {
  * init wiinunchuck
  */
 void wiinunchuck_init() {
+	PORTA = 0x00;
 	#if WIINUNCHUCK_I2CINIT == 1
 	//init i2c
 	i2c_init();
@@ -241,13 +242,17 @@ void wiinunchuck_init() {
 	//alternative init: 0xF0 -> 0x55 followed by 0xFB -> 0x00, lets us use 3rd party nunchucks
 	//no longer need to decode bytes in _nunchuk_decode_byte
 	i2c_start_wait(WIINUNCHUCK_ADDR | I2C_WRITE);
+	PORTA = TWSR;
 	i2c_write(0xF0);
 	i2c_write(0x55);
+
 	i2c_stop();
 	i2c_start_wait(WIINUNCHUCK_ADDR | I2C_WRITE);
 	i2c_write(0xFB);
 	i2c_write(0x00);
 	i2c_stop();
+
+	
 	//update
 	wiinunchuck_update();
 }
