@@ -3,7 +3,7 @@
  *
  * Created: 5/30/2018 11:50:34 PM
  * Author : David
- */ 
+ */
 
 #include <avr/io.h>
 #include <ucr/usart.h>
@@ -52,15 +52,22 @@ unsigned char UPDATE_SUCCESS;
 int updateLED();
 int clearScreen();
 
+struct blockCoord {
+    unsigned char x; //top left x-coordinate
+    unsigned char y; //top left y-coordinate
+    unsigned char *blockType;
+}
 enum GLogic_States {GLogic_Init, GLogic_Input, GLogic_CheckRows, GLogic_SpawnBlock, GLogic_Advance} GLogic_State;
 task GLogic;
 int GLogic_Tick();
 unsigned char LED_MATRIX[32][16]; //27x16 is where game takes place; extra shows score
-unsigned char LED_MATRIX_ROW = 32;
-unsigned char LED_MATRIX_COL = 16;
+const unsigned char LED_MATRIX_ROW = 32;
+const unsigned char LED_MATRIX_COL = 16;
 unsigned char LOGIC_STATUS;
 unsigned char SCORE;
 unsigned char BLOCK_STATUS;
+unsigned char BLOCK_POS;
+blockCoord CURRENT_BLOCK;
 #define GAME_OVER 0
 #define WIN 1
 #define NEITHER 2
@@ -70,8 +77,9 @@ int parseInput();
 int checkRows();
 int spawnBlock();
 int advance();
+int updateBlockPos();
 
-enum ERR_States {ERR_Init, ERR_msg} Err_State;
+enum ERR_States {ERR_Init, ERR_Msg} Err_State;
 task Err;
 int Err_Tick();
 unsigned char ERR_TYPE;
@@ -82,39 +90,101 @@ unsigned char ERR_TYPE;
 #define ERR_LOGIC_ADVANCE 4
 #define ERR_LOGIC_SPAWN 5
 #define GAME 6
- 
+
+enum RAND_States {RAND_Init, RAND_Loop} RAND_State;
+task RAND;
+int RAND_Tick();
+unsigned char SEED;
 
 
 
 
 
+//BEGIN BLOCK_MATRIX_ALL ELEMENT DECLARATIONS
 unsigned char BLOCK_MATRIX[2][2] = {
 	{1,1},
 	{1,1}
 };
-unsigned char HOOK_L_MATRIX[2][3] = {
+
+//BEGIN HOOK_L_MATRIX_ALL ELEMENT DECLARATIONS
+//RIGHT = CCW
+//LEFT = CW
+unsigned char HOOK_L_MATRIX_ONE = {
 	{1,0,0},
 	{1,1,1}
 };
-//unsigned char HOOK_R_MATRIX[2][3] = {
-	//{0,0,1},
-	//{1,1,1}
-//};
-//unsigned char Z_MATRIX[2][3] = {
-	//{1,1,0},
-	//{0,1,1}
-//};
-//unsigned char Z_BACK_MATRIX[2][3] = {
-	//{0,1,1},
-	//{1,1,0}
-//};
-//unsigned char LINE_MATRIX[1][4] = {
-	//{1,1,1,1}
-//};
-//unsigned char WASD_MATRIX[2][3] = {
-	//{0,1,0},
-	//{1,1,1}
-//};
+unsigned char HOOK_L_MATRIX_TWO = {
+    {0,1},
+    {0,1},
+    {1,1}
+};
+unsigned char HOOK_L_MATRIX_THREE = {
+    {1,1,1},
+	{0,0,1}
+};
+unsigned char HOOK_L_MATRIX_FOUR = {
+    {1,1},
+    {1,0},
+    {1,0}
+};
+//END HOOK_L_MATRIX_ALL ELEMENT DECLARATIONS
+
+//BEGIN HOOK_R_MATRIX_ALL ELEMENT DECLARATIONS
+//RIGHT = CCW
+//LEFT = CW
+unsigned char HOOK_R_MATRIX_ONE = {
+	{0,0,1},
+	{1,1,1}
+};
+unsigned char HOOK_R_MATRIX_TWO = {
+    {1,1},
+    {0,1},
+    {0,1}
+};
+unsigned char HOOK_R_MATRIX_THREE = {
+    {1,1,1},
+	{1,0,0}
+};
+unsigned char HOOK_R_MATRIX_FOUR = {
+    {1,0},
+    {1,0},
+    {1,1}
+};
+//END HOOK_R_MATRIX_ALL ELEMENT DECLARATIONS
+
+//BEGIN Z_MATRIX_ALL ELEMENT DECLARATIONS
+//RIGHT = CCW
+//LEFT = CW
+unsigned char Z_MATRIX_ONE = {
+	{1,1,0},
+	{0,1,1}
+};
+unsigned char Z_MATRIX_TWO = {
+	{0,1},
+	{1,1},
+    {1,0}
+};
+//END Z_MATRIX_ALL ELEMENT DECLARATIONS
+
+//BEGIN Z_BACK_MATRIX_ALL ELEMENT DECLARATIONS
+unsigned char Z_BACK_MATRIX_ONE = {
+	{0,1,1},
+	{1,1,0}
+};
+unsigned char Z_BACK_MATRIX_TWO = {
+    {1,0},
+	{1,1},
+    {0,1}
+};
+//END Z_BACK_MATRIX_ALL ELEMENT DECLARATIONS
+
+unsigned char LINE_MATRIX[1][4] = {
+	{1,1,1,1}
+};
+unsigned char WASD_MATRIX[2][3] = {
+	{0,1,0},
+	{1,1,1}
+};
 
 unsigned char BLOCK_MATRIX_ALL[1];
 unsigned char HOOK_L_MATRIX_ALL[4];
@@ -191,12 +261,32 @@ unsigned char NINE[5][3] = {
 
 int main(void)
 {
+    //PORT INITS
 	DDRA = 0x00; PORTA = 0xFF;
 	DDRC = 0xFF; PORTC = 0x00;
 	DDRD = 0xFF; PORTD = 0x00;
+
+    //USART INIT
 	initUSART();
+
+    //FILL BLOCK MATRICES
+    BLOCK_MATRIX_ALL = {&BLOCK_MATRIX};
+    HOOK_L_MATRIX_ALL = {&HOOK_L_MATRIX};
+
+    //GLOBAL INITS
+    SEED = 0;
+    ERR_TYPE = NONE;
+    CURRENT_BLOCK.x = 0;
+    CURRENT_BLOCK.y = LED_MATRIX_COL - 1 - 5; //0 indexed & first 5 rows are for score
+    CURRENT_BLOCK.blockType = &BLOCK_MATRIX; //TODO: need to check if it will compile
+
+
+    UPDATE_SUCCESS = SUCCESS; //for initialization
+    LOGIC_STATUS = NEITHER;
+
+
     /* Replace with your application code */
-    while (1) 
+    while (1)
     {
 		if (USART_IsSendReady()) {
 			USART_Send(0x10);
@@ -211,7 +301,7 @@ int main(void)
 
 int Gstate_Tick() {
 	switch (G_State) {
-		case G_Init: 
+		case G_Init:
 			G_State = G_InProgress;
 			break;
 		case G_InProgress:
@@ -244,7 +334,7 @@ int Gstate_Tick() {
 			G_State = G_Init;
 	}
 	switch (G_State) {
-		case G_InProgress: 
+		case G_InProgress:
 			GAME_STATUS = IN_PROGRESS;
 			break;
 		case G_End:
@@ -338,7 +428,9 @@ int GLogic_Tick() {
 		case GLogic_Input:
 			if (!parseInput()) {
 				ERR_TYPE = ERR_LOGIC_PARSE;
-			}
+			} else {
+                if (!updateBlockPos()){ERR_TYPE = ERR_BLOCK_POS;}
+            }
 			break;
 		case GLogic_CheckRows:
 			if (!checkRows()) {
@@ -360,6 +452,28 @@ int GLogic_Tick() {
 }
 
 int parseInput() {
+    if (INPUT_BUTTONS == INPUT_LEFT) {
+        BLOCK_POS--;
+    } else if (INPUT_BUTTONS == INPUT_RIGHT) {
+        BLOCK_POS++;
+    }
+    //can't really fail this
+    return SUCCESS;
+}
+int updateBlockPos() {
 
 }
 
+int spawnBlock() {
+    CURRENT_BLOCK.x = 0;
+    CURRENT_BLOCK.y = LED_MATRIX_COL - 1 - 5; //0 indexed & first 5 rows are for score
+    CURRENT_BLOCK.blockType = &BLOCK_MATRIX; //TODO: need to check if it will compile
+}
+
+
+/*
+draws the
+*/
+int draw () {
+
+}
